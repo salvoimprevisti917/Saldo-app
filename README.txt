@@ -16,3 +16,14 @@ NOVITÀ
 
 IMPORTANTE
 Questo ZIP contiene solo il codice dell'app. Non contiene i movimenti finanziari personali.
+
+
+SALDO v0.3.1
+- Filtri Movimenti Tutti/Entrate/Uscite funzionanti.
+- Inserimento manuale con scelta Carta di credito.
+- I versamenti contanti non vengono considerati automaticamente reddito.
+- Home e Budget usano il mese corrente anche se lo storico importato termina al mese precedente.
+- Compatibile con i dati locali delle versioni precedenti.
+
+
+v0.3.2: filtro Movimenti corretto per segno; Revolut riconosciuto anche nei dettagli; compatibile con storico precedente.

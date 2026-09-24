@@ -6,6 +6,7 @@ const monthName=m=>new Date(m+'-01T12:00:00').toLocaleDateString('it-IT',{month:
 let tx=JSON.parse(localStorage.getItem(KEY)||'[]');
 let settings=JSON.parse(localStorage.getItem(SETTINGS)||'{}');
 let view='home';
+let movementFilter='all';
 
 function migrateSettings(){
   settings={
@@ -30,15 +31,18 @@ migrateSettings();
 function save(){localStorage.setItem(KEY,JSON.stringify(tx));localStorage.setItem(SETTINGS,JSON.stringify(settings))}
 save();
 
-function latestMonth(){if(!tx.length)return new Date().toISOString().slice(0,7);return tx.map(x=>x.date.slice(0,7)).sort().at(-1)}
+function currentMonth(){return new Date().toISOString().slice(0,7)}
+function latestMonth(){if(!tx.length)return currentMonth();return tx.map(x=>x.date.slice(0,7)).sort().at(-1)}
 function monthData(m=latestMonth()){return tx.filter(x=>x.date.startsWith(m))}
 function isCardStatement(x){return /saldo e\/c carta di credito/i.test((x.description||'')+' '+(x.details||''))}
-function isRevolutTopup(x){return /revolut/i.test(x.description||'')}
+function isRevolutTopup(x){return /revolut/i.test((x.description||'')+' '+(x.details||''))}
 function isHomeTransfer(x){let s=((x.description||'')+' '+(x.details||'')).toLowerCase();return x.amount<0 && (s.includes('bonifico')||s.includes('giroconto')) && Math.abs(x.amount)>=400}
 function classification(x){
+  if(x.flowType) return x.flowType;
   if(isCardStatement(x)) return 'card_statement';
   if(isRevolutTopup(x)) return 'wallet_transfer';
   if(isHomeTransfer(x)) return 'home';
+  if(x.amount>0 && /versamento contanti/i.test((x.description||'')+' '+(x.details||''))) return 'asset_transfer';
   return x.amount>=0?'income':'expense';
 }
 function totals(arr){
@@ -47,7 +51,7 @@ function totals(arr){
     const c=classification(x);
     if(c==='income') income+=x.amount;
     else if(c==='expense'||c==='home') expense+=-x.amount;
-    else if(c==='wallet_transfer') transfers+=-x.amount;
+    else if(c==='wallet_transfer'||c==='asset_transfer') transfers+=Math.abs(x.amount);
     else if(c==='card_statement') cardStatements+=-x.amount;
   });
   return{income,expense,transfers,cardStatements,net:income-expense};
@@ -55,9 +59,8 @@ function totals(arr){
 function icon(cat){return ({'Alimentari':'🛒','Ristoranti e bar':'☕','Trasporti':'🚆','Abbonamenti':'▣','Entrate':'↗','Salute':'✚','Commissioni':'€','Casa':'⌂','Rate e debiti':'▤','Svago':'◈'}[cat]||'•')}
 function daysInMonth(m){let [y,mo]=m.split('-').map(Number);return new Date(y,mo,0).getDate()}
 function monthContext(){
-  const m=latestMonth(), today=new Date(), current=today.toISOString().slice(0,7)===m;
-  const day=current?today.getDate():daysInMonth(m);
-  return {m,day,current};
+  const m=currentMonth(), today=new Date();
+  return {m,day:today.getDate(),current:true};
 }
 function futureRecurring(m,day){
   return settings.recurring.filter(r=>r.enabled!==false && r.type==='expense' && Number(r.day)>day).reduce((s,r)=>s+Number(r.amount||0),0);
@@ -67,7 +70,7 @@ function obligationsBreakdown(m,day){
 }
 function rowHTML(x){
   const cls=classification(x);
-  const tag=cls==='wallet_transfer'?' · trasferimento':cls==='card_statement'?' · carta credito':'';
+  const tag=(cls==='wallet_transfer'||cls==='asset_transfer')?' · trasferimento':cls==='card_statement'?' · addebito carta':x.paymentMethod==='credit_card'?' · carta di credito':'';
   return `<div class=row><div class=badge>${icon(x.category)}</div><div class=grow><strong>${esc(x.description)}</strong><small>${x.date.split('-').reverse().join('/')} · ${esc(x.category)}${tag}</small></div><div class="amt ${x.amount>=0?'positive':''}">${money(x.amount)}</div></div>`
 }
 function home(){
@@ -95,9 +98,13 @@ function home(){
   <div class=notice>I trasferimenti Revolut sono trattati come spostamenti di denaro. Il versamento al conto casa resta invece un impegno del tuo budget personale.</div>`
 }
 function movements(){
-  let arr=tx.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,150);
-  return `<div class=section-title><h2>Movimenti</h2><small>${tx.length} totali</small></div><div class=filter><button class="chip on">Tutti</button><button class=chip>Entrate</button><button class=chip>Uscite</button></div>${arr.map(rowHTML).join('')}`
+  let arr=tx.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(movementFilter==='income') arr=arr.filter(x=>Number(x.amount)>0);
+  if(movementFilter==='expense') arr=arr.filter(x=>Number(x.amount)<0);
+  const shown=arr.slice(0,150);
+  return `<div class=section-title><h2>Movimenti</h2><small>${tx.length} totali</small></div><div class=filter><button class="chip ${movementFilter==='all'?'on':''}" onclick="setMovementFilter('all')">Tutti</button><button class="chip ${movementFilter==='income'?'on':''}" onclick="setMovementFilter('income')">Entrate</button><button class="chip ${movementFilter==='expense'?'on':''}" onclick="setMovementFilter('expense')">Uscite</button></div>${shown.length?shown.map(rowHTML).join(''):'<div class=emptySmall>Nessun movimento per questo filtro.</div>'}`
 }
+window.setMovementFilter=f=>{movementFilter=f;render()};
 function categorySpend(m){
   let cats={};
   monthData(m).filter(x=>x.amount<0 && ['expense','home'].includes(classification(x))).forEach(x=>{
@@ -173,15 +180,15 @@ window.openFinanceSetup=()=>{
 };
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.view;render()});
 document.querySelector('#fab').onclick=()=>{
-  let d=document.querySelector('#modal');d.innerHTML=`<form method=dialog id=moveForm><h2>Nuovo movimento</h2><label>Tipo<select id=type><option value="-1">Spesa</option><option value="1">Entrata</option></select></label><label>Importo<input id=amount type=number min=0 step=.01 required inputmode=decimal></label><label>Descrizione<input id=desc required placeholder="Es. Supermercato"></label><label>Categoria<select id=cat>${['Alimentari','Ristoranti e bar','Trasporti','Abbonamenti','Casa','Salute','Svago','Rate e debiti','Altro','Entrate'].map(x=>`<option>${x}</option>`).join('')}</select></label><label>Data<input id=date type=date required value="${new Date().toISOString().slice(0,10)}"></label><div class=actions><button class="btn secondary" value=cancel>Annulla</button><button class="btn primary" id=saveMove value=default>Salva</button></div></form>`;
-  d.showModal();d.querySelector('#moveForm').onsubmit=e=>{if(e.submitter?.value==='cancel')return;let amount=Number(d.querySelector('#amount').value)*Number(d.querySelector('#type').value);tx.unshift({id:crypto.randomUUID(),date:d.querySelector('#date').value,description:d.querySelector('#desc').value,details:'Inserimento manuale',account:'Manuale',posted:'SI',bankCategory:'',category:d.querySelector('#cat').value,currency:'EUR',amount});tx.sort((a,b)=>b.date.localeCompare(a.date));save();setTimeout(render,0)}
+  let d=document.querySelector('#modal');d.innerHTML=`<form method=dialog id=moveForm><h2>Nuovo movimento</h2><label>Tipo<select id=type><option value="-1">Spesa</option><option value="1">Entrata</option></select></label><label>Importo<input id=amount type=number min=0 step=.01 required inputmode=decimal></label><label>Descrizione<input id=desc required placeholder="Es. Supermercato"></label><label>Categoria<select id=cat>${['Alimentari','Ristoranti e bar','Trasporti','Abbonamenti','Casa','Salute','Svago','Rate e debiti','Altro','Entrate'].map(x=>`<option>${x}</option>`).join('')}</select></label><label>Pagamento<select id=payment><option value="debit">Conto / bancomat / contanti</option><option value="credit_card">Carta di credito</option></select></label><label>Data<input id=date type=date required value="${new Date().toISOString().slice(0,10)}"></label><div class=actions><button class="btn secondary" value=cancel>Annulla</button><button class="btn primary" id=saveMove value=default>Salva</button></div></form>`;
+  d.showModal();d.querySelector('#moveForm').onsubmit=e=>{if(e.submitter?.value==='cancel')return;let amount=Number(d.querySelector('#amount').value)*Number(d.querySelector('#type').value);let paymentMethod=d.querySelector('#type').value==='-1'?d.querySelector('#payment').value:'income';tx.unshift({id:crypto.randomUUID(),date:d.querySelector('#date').value,description:d.querySelector('#desc').value,details:'Inserimento manuale',account:'Manuale',posted:'SI',bankCategory:'',category:d.querySelector('#cat').value,currency:'EUR',amount,paymentMethod});tx.sort((a,b)=>b.date.localeCompare(a.date));save();setTimeout(render,0)}
 };
 document.querySelector('#importBtn').onclick=()=>{
   let input=document.createElement('input');input.type='file';input.accept='.json,application/json';
   input.onchange=async()=>{let f=input.files?.[0];if(!f)return;try{let data=JSON.parse(await f.text());let imported=Array.isArray(data)?data:data.transactions;if(!Array.isArray(imported))throw new Error('Formato non valido');if(!confirm(`Importare ${imported.length} movimenti? I dati locali attuali verranno sostituiti.`))return;tx=imported;settings={...settings,...(data.settings||{})};migrateSettings();tx.sort((a,b)=>b.date.localeCompare(a.date));save();render();alert('Importazione completata.');}catch(e){alert('Impossibile importare il backup: '+e.message)}};input.click()
 };
 document.querySelector('#backupBtn').onclick=()=>{
-  let blob=new Blob([JSON.stringify({version:'0.3',exportedAt:new Date().toISOString(),transactions:tx,settings},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='SALDO_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href)
+  let blob=new Blob([JSON.stringify({version:'0.3.2',exportedAt:new Date().toISOString(),transactions:tx,settings},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='SALDO_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href)
 };
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').then(r=>r.update()).catch(()=>{});
 render();

@@ -1,10 +1,18 @@
-SALDO v0.2 CLEAN - PWA personale
+SALDO v0.3 — HOME + BUDGET
+Aggiornamento pubblico senza dati personali.
 
-VERSIONE DESTINATA ALLA PUBBLICAZIONE
-- NON contiene movimenti bancari, importi, descrizioni o dati personali.
-- I dati vengono conservati localmente nel browser/PWA (localStorage).
-- Importazione e backup avvengono tramite file JSON locale.
-- Nessun database remoto richiesto.
-- Il repository/hosting contiene esclusivamente il codice dell'app.
+NOVITÀ
+- Home: rimosso Storico.
+- Nuova Disponibilità reale: saldo attuale meno uscite future e carta di credito.
+- Previsione fino a fine mese.
+- Conto casa condiviso impostato come impegno mensile da 500 €.
+- Finanziamento impostato come impegno mensile da 330,36 €.
+- Revolut riconosciuto come trasferimento, non come consumo.
+- Addebito saldo carta di credito separato dalle spese correnti.
+- Nuova dashboard Budget/Piano di risanamento.
+- Card dedicata all'uscita dalla carta di credito.
+- Dati e impostazioni restano in localStorage e non vengono cancellati dall'aggiornamento.
+- Backup aggiornato a formato v0.3.
 
-Installazione iPhone: pubblicare via HTTPS, aprire con Safari, Condividi > Aggiungi alla schermata Home.
+IMPORTANTE
+Questo ZIP contiene solo il codice dell'app. Non contiene i movimenti finanziari personali.

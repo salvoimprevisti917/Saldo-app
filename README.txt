@@ -8,7 +8,7 @@ Privacy
 - I dati personali sono conservati localmente nel browser/PWA del dispositivo.
 - Backup e configurazioni esportate in JSON sono file privati e non devono essere caricati nel repository pubblico.
 
-Versione 0.4.2
+Versione 0.4.3
 - aggiornamento PWA/cache più robusto;
 - numero versione visibile nell'app;
 - configurazione finanziaria separata dal codice pubblico;

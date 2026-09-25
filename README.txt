@@ -1,29 +1,18 @@
-SALDO v0.3 — HOME + BUDGET
-Aggiornamento pubblico senza dati personali.
+SALDO v0.4.1 — Home, Obiettivi, Budget, Investimenti, Fondo rischi
 
-NOVITÀ
-- Home: rimosso Storico.
-- Nuova Disponibilità reale: saldo attuale meno uscite future e carta di credito.
-- Previsione fino a fine mese.
-- Conto casa condiviso impostato come impegno mensile da 500 €.
-- Finanziamento impostato come impegno mensile da 330,36 €.
-- Revolut riconosciuto come trasferimento, non come consumo.
-- Addebito saldo carta di credito separato dalle spese correnti.
-- Nuova dashboard Budget/Piano di risanamento.
-- Card dedicata all'uscita dalla carta di credito.
-- Dati e impostazioni restano in localStorage e non vengono cancellati dall'aggiornamento.
-- Backup aggiornato a formato v0.3.
+Novità:
+- Home ridisegnata: entrate fisse, spese fisse con data, totale spese fisse, carta separata Casa/Altre spese, Residuo reale.
+- Residuo reale = entrate fisse - spese fisse - carta maturata.
+- Nessun saldo bancario richiesto.
+- Obiettivi: carta a 500 €, Università 2.500 €, crescita conto, Estetica 4.000 €, Patente nautica 2.000 €.
+- Budget: Alimentari 40, Bar 40, Tabacchi 100, Shopping 40, Salute/cura 30, Extra/svago 100. Totale 350 €.
+- Investimenti: primo target PAC 100 €/mese.
+- Fondo rischi: target automatico pari a 6 mesi di spese fisse.
+- Da ottobre 2026 abbonamento treno 51,30 €/mese tra le spese fisse.
+- Telefonia Very 10 €/mese tra le spese fisse.
+- ChatGPT Plus 22,99 €/mese dal 20/08/2026 tra gli abbonamenti/spese fisse.
+- Mooney casa non è un'utenza e resta nella carta di credito.
+- Movimenti ancora disponibili dalla Home e filtri funzionanti.
+- I dati restano in localStorage con le stesse chiavi delle versioni precedenti.
 
-IMPORTANTE
-Questo ZIP contiene solo il codice dell'app. Non contiene i movimenti finanziari personali.
-
-
-SALDO v0.3.1
-- Filtri Movimenti Tutti/Entrate/Uscite funzionanti.
-- Inserimento manuale con scelta Carta di credito.
-- I versamenti contanti non vengono considerati automaticamente reddito.
-- Home e Budget usano il mese corrente anche se lo storico importato termina al mese precedente.
-- Compatibile con i dati locali delle versioni precedenti.
-
-
-v0.3.2: filtro Movimenti corretto per segno; Revolut riconosciuto anche nei dettagli; compatibile con storico precedente.
+Gli addebiti Apple.com/bill da 22,99 € del 20/08 e 20/09/2026 sono ChatGPT Plus e sono inclusi come spesa fissa. Il movimento analogo del 20/01 resta storico e non viene usato per anticipare l'inizio dell'abbonamento.

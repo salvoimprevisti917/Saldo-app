@@ -1,194 +1,79 @@
-const KEY='saldo_v01_transactions';
-const SETTINGS='saldo_v01_settings';
+const KEY='saldo_v01_transactions', SETTINGS='saldo_v01_settings';
 const money=n=>new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(Number(n)||0);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const monthName=m=>new Date(m+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'});
-let tx=JSON.parse(localStorage.getItem(KEY)||'[]');
-let settings=JSON.parse(localStorage.getItem(SETTINGS)||'{}');
-let view='home';
-let movementFilter='all';
-
+let tx=JSON.parse(localStorage.getItem(KEY)||'[]'), settings=JSON.parse(localStorage.getItem(SETTINGS)||'{}'), view='home', movementFilter='all';
 function migrateSettings(){
-  settings={
-    monthlyBudget:0,
-    goals:[],
-    currentBalance:null,
-    balanceUpdatedAt:null,
-    creditCardOutstanding:null,
-    recurring:[
-      {id:'home_shared',name:'Conto casa condiviso',amount:500,day:1,type:'expense',enabled:true,kind:'home'},
-      {id:'loan',name:'Finanziamento',amount:330.36,day:20,type:'expense',enabled:true,kind:'debt'}
-    ],
-    budgetLimits:{},
-    ...settings
-  };
-  if(!Array.isArray(settings.recurring)) settings.recurring=[];
-  if(!settings.recurring.some(x=>x.id==='home_shared')) settings.recurring.unshift({id:'home_shared',name:'Conto casa condiviso',amount:500,day:1,type:'expense',enabled:true,kind:'home'});
-  if(!settings.recurring.some(x=>x.id==='loan')) settings.recurring.push({id:'loan',name:'Finanziamento',amount:330.36,day:20,type:'expense',enabled:true,kind:'debt'});
-  settings.budgetLimits=settings.budgetLimits||{};
+  const old=settings||{};
+  settings={...old};
+  settings.fixedIncome=settings.fixedIncome||[{id:'salary',name:'Stipendio',amount:1557,day:14,enabled:true}];
+  settings.fixedExpenses=settings.fixedExpenses||[
+    {id:'loan',name:'Finanziamento',amount:330.36,day:20,enabled:true},
+    {id:'very',name:'Telefonia Very',amount:10,day:1,enabled:true},
+    {id:'disney',name:'Disney+',amount:15.99,day:15,enabled:true},
+    {id:'netflix',name:'Netflix',amount:24.98,day:27,enabled:true},
+    {id:'icloud',name:'Apple',amount:.99,day:25,enabled:true},
+    {id:'bank',name:'Canone conto bancario',amount:3,day:30,enabled:true},
+    {id:'train',name:'Abbonamento treno',amount:51.30,day:1,enabled:true,startMonth:'2026-10'}
+  ];
+  // v0.4.1: ChatGPT Plus è una spesa fissa da agosto 2026.
+  // Upsert necessario anche per chi ha già salvato fixedExpenses con la v0.4.
+  if(!settings.fixedExpenses.some(r=>r.id==='chatgpt')) settings.fixedExpenses.push({id:'chatgpt',name:'ChatGPT Plus',amount:22.99,day:20,enabled:true,startMonth:'2026-08'});
+  settings.creditCard={house:500,other:Math.max(0,Number(old.creditCardOutstanding||961.63)-500),debitDay:20,...(old.creditCard||{})};
+  settings.budgetLimits={Alimentari:40,Bar:40,Tabacchi:100,Shopping:40,'Salute / cura personale':30,'Extra / svago':100,...(old.budgetLimits||{})};
+  settings.goalBalances={university:0,savings:0,aesthetic:0,boat:0,...(old.goalBalances||{})};
+  settings.investmentMonthlyTarget=Number(old.investmentMonthlyTarget||100); settings.investedBalance=Number(old.investedBalance||0);
+  settings.riskFundBalance=Number(old.riskFundBalance||0);
+  delete settings.currentBalance;
 }
-migrateSettings();
-function save(){localStorage.setItem(KEY,JSON.stringify(tx));localStorage.setItem(SETTINGS,JSON.stringify(settings))}
-save();
-
-function currentMonth(){return new Date().toISOString().slice(0,7)}
-function latestMonth(){if(!tx.length)return currentMonth();return tx.map(x=>x.date.slice(0,7)).sort().at(-1)}
-function monthData(m=latestMonth()){return tx.filter(x=>x.date.startsWith(m))}
+migrateSettings(); function save(){localStorage.setItem(KEY,JSON.stringify(tx));localStorage.setItem(SETTINGS,JSON.stringify(settings))} save();
+function currentMonth(){return new Date().toISOString().slice(0,7)} function monthData(m=currentMonth()){return tx.filter(x=>x.date?.startsWith(m))}
 function isCardStatement(x){return /saldo e\/c carta di credito/i.test((x.description||'')+' '+(x.details||''))}
-function isRevolutTopup(x){return /revolut/i.test((x.description||'')+' '+(x.details||''))}
-function isHomeTransfer(x){let s=((x.description||'')+' '+(x.details||'')).toLowerCase();return x.amount<0 && (s.includes('bonifico')||s.includes('giroconto')) && Math.abs(x.amount)>=400}
-function classification(x){
-  if(x.flowType) return x.flowType;
-  if(isCardStatement(x)) return 'card_statement';
-  if(isRevolutTopup(x)) return 'wallet_transfer';
-  if(isHomeTransfer(x)) return 'home';
-  if(x.amount>0 && /versamento contanti/i.test((x.description||'')+' '+(x.details||''))) return 'asset_transfer';
-  return x.amount>=0?'income':'expense';
-}
-function totals(arr){
-  let income=0,expense=0,transfers=0,cardStatements=0;
-  arr.forEach(x=>{
-    const c=classification(x);
-    if(c==='income') income+=x.amount;
-    else if(c==='expense'||c==='home') expense+=-x.amount;
-    else if(c==='wallet_transfer'||c==='asset_transfer') transfers+=Math.abs(x.amount);
-    else if(c==='card_statement') cardStatements+=-x.amount;
-  });
-  return{income,expense,transfers,cardStatements,net:income-expense};
-}
-function icon(cat){return ({'Alimentari':'🛒','Ristoranti e bar':'☕','Trasporti':'🚆','Abbonamenti':'▣','Entrate':'↗','Salute':'✚','Commissioni':'€','Casa':'⌂','Rate e debiti':'▤','Svago':'◈'}[cat]||'•')}
-function daysInMonth(m){let [y,mo]=m.split('-').map(Number);return new Date(y,mo,0).getDate()}
-function monthContext(){
-  const m=currentMonth(), today=new Date();
-  return {m,day:today.getDate(),current:true};
-}
-function futureRecurring(m,day){
-  return settings.recurring.filter(r=>r.enabled!==false && r.type==='expense' && Number(r.day)>day).reduce((s,r)=>s+Number(r.amount||0),0);
-}
-function obligationsBreakdown(m,day){
-  return settings.recurring.filter(r=>r.enabled!==false && r.type==='expense' && Number(r.day)>day);
-}
-function rowHTML(x){
-  const cls=classification(x);
-  const tag=(cls==='wallet_transfer'||cls==='asset_transfer')?' · trasferimento':cls==='card_statement'?' · addebito carta':x.paymentMethod==='credit_card'?' · carta di credito':'';
-  return `<div class=row><div class=badge>${icon(x.category)}</div><div class=grow><strong>${esc(x.description)}</strong><small>${x.date.split('-').reverse().join('/')} · ${esc(x.category)}${tag}</small></div><div class="amt ${x.amount>=0?'positive':''}">${money(x.amount)}</div></div>`
-}
+function isRevolut(x){return /revolut/i.test((x.description||'')+' '+(x.details||''))}
+function isCashDeposit(x){return x.amount>0&&/versamento contanti/i.test((x.description||'')+' '+(x.details||''))}
+function isHouseMooney(x){let s=((x.description||'')+' '+(x.details||'')).toLowerCase();return /mooney/.test(s)&&Math.abs(Number(x.amount))>=400}
+function classification(x){if(x.flowType)return x.flowType;if(isCardStatement(x))return'card_statement';if(isRevolut(x))return'wallet_transfer';if(isCashDeposit(x))return'asset_transfer';if(isHouseMooney(x))return'home';return Number(x.amount)>=0?'income':'expense'}
+function totals(arr){let income=0,expense=0;arr.forEach(x=>{let c=classification(x);if(c==='income')income+=Number(x.amount);else if(c==='expense')expense+=-Number(x.amount)});return{income,expense,net:income-expense}}
+function activeForMonth(r,m=currentMonth()){return r.enabled!==false&&(!r.startMonth||m>=r.startMonth)&&(!r.endMonth||m<=r.endMonth)}
+function fixedIncomeTotal(m=currentMonth()){return settings.fixedIncome.filter(r=>activeForMonth(r,m)).reduce((s,r)=>s+Number(r.amount||0),0)}
+function fixedExpenseTotal(m=currentMonth()){return settings.fixedExpenses.filter(r=>activeForMonth(r,m)).reduce((s,r)=>s+Number(r.amount||0),0)}
+function cardTotal(){return Number(settings.creditCard.house||0)+Number(settings.creditCard.other||0)}
+function icon(cat){return ({Alimentari:'🛒',Bar:'☕',Tabacchi:'◉',Shopping:'▱','Salute / cura personale':'✚','Extra / svago':'◈'}[cat]||'•')}
+function rowHTML(x){let c=classification(x),tag=(c==='wallet_transfer'||c==='asset_transfer')?' · trasferimento':c==='card_statement'?' · addebito carta':x.paymentMethod==='credit_card'?' · carta di credito':'';return `<div class=row><div class=badge>${icon(x.category)}</div><div class=grow><strong>${esc(x.description)}</strong><small>${x.date.split('-').reverse().join('/')} · ${esc(x.category||'Altro')}${tag}</small></div><div class="amt ${x.amount>=0?'positive':''}">${money(x.amount)}</div></div>`}
 function home(){
-  const {m,day}=monthContext(), a=monthData(m), t=totals(a), upcoming=futureRecurring(m,day);
-  const card=Number(settings.creditCardOutstanding||0);
-  const balance=settings.currentBalance===null||settings.currentBalance===''?null:Number(settings.currentBalance);
-  const available=balance===null?null:balance-upcoming-card;
-  const recent=a.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
-  const ob=obligationsBreakdown(m,day);
-  return `<div class=hero>
-    <div class=heroTop><div><div class=eyebrow>DISPONIBILITÀ REALE</div><div class="big ${available!==null&&available<0?'negative':''}">${available===null?'—':money(available)}</div></div><button class=miniBtn onclick="openFinanceSetup()">Configura</button></div>
-    <div class=sub>${balance===null?'Inserisci il saldo attuale per attivare la previsione':`Saldo oggi ${money(balance)} · impegni futuri ${money(upcoming+card)}`}</div>
-    ${balance!==null?`<div class=availabilityLine><span>Saldo attuale <b>${money(balance)}</b></span><span>Da pagare <b>${money(upcoming+card)}</b></span></div>`:''}
-  </div>
-  <div class=grid>
-    <div class=card><span class=eyebrow>ENTRATE ${esc(monthName(m).split(' ')[0].toUpperCase())}</span><b class=positive>${money(t.income)}</b></div>
-    <div class=card><span class=eyebrow>USCITE REALI</span><b>${money(t.expense)}</b></div>
-    <div class=card><span class=eyebrow>RISULTATO MESE</span><b class="${t.net>=0?'positive':'negative'}">${money(t.net)}</b></div>
-    <div class=card><span class=eyebrow>DA PAGARE</span><b>${money(upcoming+card)}</b></div>
-  </div>
-  ${ob.length||card?`<div class=section-title><h2>Fino a fine mese</h2><small>previsto</small></div>
-  <div class=forecast>${ob.map(r=>`<div><span>${esc(r.name)} <small>giorno ${r.day}</small></span><b>− ${money(r.amount)}</b></div>`).join('')}${card?`<div><span>Carta di credito <small>prossimo addebito</small></span><b>− ${money(card)}</b></div>`:''}</div>`:''}
-  <div class=section-title><h2>Ultimi movimenti</h2><small>${esc(monthName(m).split(' ')[0])}</small></div>
-  ${recent.length?recent.map(rowHTML).join(''):'<div class=emptySmall>Nessun movimento nel mese.</div>'}
-  <div class=notice>I trasferimenti Revolut sono trattati come spostamenti di denaro. Il versamento al conto casa resta invece un impegno del tuo budget personale.</div>`
+ const m=currentMonth(), income=fixedIncomeTotal(m), fixed=fixedExpenseTotal(m), card=cardTotal(), residual=income-fixed-card;
+ const recent=monthData(m).slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
+ return `<div class=section-title><h2>Entrate fisse</h2><button class=textBtn onclick="openPlanSetup()">Modifica</button></div>
+ <div class=planStack>${settings.fixedIncome.filter(r=>activeForMonth(r,m)).map(r=>`<div class=planCard incomeCard><div><small>GIORNO ${r.day}</small><strong>${esc(r.name)}</strong></div><b>${money(r.amount)}</b></div>`).join('')}</div>
+ <div class=section-title><h2>Spese fisse</h2><small>${monthName(m)}</small></div>
+ <div class=planStack>${settings.fixedExpenses.filter(r=>activeForMonth(r,m)).map(r=>`<div class=planCard><div><small>GIORNO ${r.day}</small><strong>${esc(r.name)}</strong></div><b>− ${money(r.amount)}</b></div>`).join('')}</div>
+ <div class=totalStrip><span>Totale spese fisse</span><b>${money(fixed)}</b></div>
+ <div class=section-title><h2>Carta di credito</h2><small>addebito giorno ${settings.creditCard.debitDay} mese successivo</small></div>
+ <div class=creditSplit><div><small>CASA</small><b>${money(settings.creditCard.house)}</b></div><div><small>ALTRE SPESE</small><b>${money(settings.creditCard.other)}</b></div><div class=creditTotal><span>Totale carta maturato</span><b>${money(card)}</b></div></div>
+ <div class="residual ${residual<0?'bad':''}"><div class=eyebrow>RESIDUO REALE</div><div class=big>${money(residual)}</div><p>Entrate fisse ${money(income)} − spese fisse ${money(fixed)} − carta ${money(card)}</p></div>
+ <div class=section-title><h2>Ultimi movimenti</h2><button class=textBtn onclick="openMovements()">Tutti i movimenti</button></div>${recent.length?recent.map(rowHTML).join(''):'<div class=emptySmall>Nessun movimento nel mese.</div>'}`
 }
-function movements(){
-  let arr=tx.slice().sort((a,b)=>b.date.localeCompare(a.date));
-  if(movementFilter==='income') arr=arr.filter(x=>Number(x.amount)>0);
-  if(movementFilter==='expense') arr=arr.filter(x=>Number(x.amount)<0);
-  const shown=arr.slice(0,150);
-  return `<div class=section-title><h2>Movimenti</h2><small>${tx.length} totali</small></div><div class=filter><button class="chip ${movementFilter==='all'?'on':''}" onclick="setMovementFilter('all')">Tutti</button><button class="chip ${movementFilter==='income'?'on':''}" onclick="setMovementFilter('income')">Entrate</button><button class="chip ${movementFilter==='expense'?'on':''}" onclick="setMovementFilter('expense')">Uscite</button></div>${shown.length?shown.map(rowHTML).join(''):'<div class=emptySmall>Nessun movimento per questo filtro.</div>'}`
-}
+window.openMovements=()=>{view='movements';render()};
+function movements(){let arr=tx.slice().sort((a,b)=>b.date.localeCompare(a.date));if(movementFilter==='income')arr=arr.filter(x=>Number(x.amount)>0);if(movementFilter==='expense')arr=arr.filter(x=>Number(x.amount)<0);return `<div class=section-title><h2>Movimenti</h2><button class=textBtn onclick="view='home';render()">Torna alla Home</button></div><div class=filter><button class="chip ${movementFilter==='all'?'on':''}" onclick="setMovementFilter('all')">Tutti</button><button class="chip ${movementFilter==='income'?'on':''}" onclick="setMovementFilter('income')">Entrate</button><button class="chip ${movementFilter==='expense'?'on':''}" onclick="setMovementFilter('expense')">Uscite</button></div>${arr.slice(0,200).map(rowHTML).join('')}`}
 window.setMovementFilter=f=>{movementFilter=f;render()};
-function categorySpend(m){
-  let cats={};
-  monthData(m).filter(x=>x.amount<0 && ['expense','home'].includes(classification(x))).forEach(x=>{
-    let c=classification(x)==='home'?'Casa – conto comune':(x.category||'Altro');
-    cats[c]=(cats[c]||0)-x.amount;
-  });
-  return cats;
-}
-function historicalAverage(cat,m){
-  const months=[...new Set(tx.map(x=>x.date.slice(0,7)))].filter(x=>x<m).sort().slice(-6);
-  if(!months.length)return 0;
-  let vals=months.map(mm=>categorySpend(mm)[cat]||0);
-  return vals.reduce((a,b)=>a+b,0)/vals.length;
-}
-function budget(){
-  const {m}=monthContext(), t=totals(monthData(m)), cats=categorySpend(m);
-  const fixed=settings.recurring.filter(r=>r.enabled!==false&&r.type==='expense').reduce((s,r)=>s+Number(r.amount||0),0);
-  const card=Number(settings.creditCardOutstanding||0);
-  const income=t.income;
-  const discretionary=Math.max(0,t.expense-(cats['Casa – conto comune']||0)-(cats['Rate e debiti']||0));
-  const free=Math.max(0,income-fixed-card);
-  const entries=Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  return `<div class=section-title><h2>Budget</h2><small>${esc(monthName(m))}</small></div>
-  <div class=budgetHero>
-    <div class=eyebrow>PIANO DI RISANAMENTO</div>
-    <div class=budgetHeadline>${money(free)}</div>
-    <div class=sub>margine teorico dopo impegni fissi${card?' e carta':''}</div>
-    <div class=budgetEquation><span>Entrate <b>${money(income)}</b></span><span>Impegni <b>−${money(fixed+card)}</b></span></div>
-  </div>
-  <div class=section-title><h2>Impegni strutturali</h2><button class=textBtn onclick="openFinanceSetup()">Modifica</button></div>
-  <div class=commitGrid>
-    <div class="commit home"><span>⌂</span><small>CONTO CASA</small><b>${money(settings.recurring.find(x=>x.id==='home_shared')?.amount||0)}</b><em>mensili</em></div>
-    <div class="commit debt"><span>▤</span><small>FINANZIAMENTO</small><b>${money(settings.recurring.find(x=>x.id==='loan')?.amount||0)}</b><em>mensili</em></div>
-    <div class="commit credit"><span>▱</span><small>CARTA DI CREDITO</small><b>${settings.creditCardOutstanding===null?'da indicare':money(card)}</b><em>${settings.creditCardOutstanding===null?'configura addebito':'prossimo addebito'}</em></div>
-  </div>
-  <div class=creditMission>
-    <div><div class=eyebrow>OBIETTIVO PRIORITARIO</div><h3>Uscita dalla carta di credito</h3><p>L'addebito della carta viene separato dalle spese correnti: così SALDO mostra quanta parte del prossimo reddito è già impegnata.</p></div>
-    <div class=missionBadge>${settings.creditCardOutstanding===null?'—':money(card)}</div>
-  </div>
-  <div class=section-title><h2>Spese del mese</h2><small>${money(discretionary)} variabili</small></div>
-  ${entries.map(([k,v])=>{let avg=historicalAverage(k,m),limit=Number(settings.budgetLimits[k]||0),base=limit||Math.max(v,avg,1),pct=Math.min(100,v/base*100);return `<div class=budgetCat><div class=catTop><span>${esc(k)}</span><b>${money(v)}</b></div><div class=bar><i style="width:${pct}%"></i></div><div class=catMeta>${limit?`Budget ${money(limit)} · residuo ${money(Math.max(0,limit-v))}`:avg?`Media storica ${money(avg)}`:'In osservazione'}</div></div>`}).join('')||'<div class=emptySmall>Nessuna spesa nel mese.</div>'}
-  <div class=notice>Prima di fissare limiti definitivi alle categorie, SALDO sta separando casa, finanziamento, carta e trasferimenti. I limiti verranno costruiti sui tuoi consumi reali, non su percentuali generiche.</div>`
-}
-function goals(){return `<div class=section-title><h2>Obiettivi</h2></div><div class=empty>◎<br><br>Qui costruiremo fondo di emergenza, risparmi e obiettivi personali.<br>Non imposto cifre senza averle definite con te.</div>`}
-function analysis(){
-  let months={};tx.forEach(x=>{let m=x.date.slice(0,7);(months[m]??=[]).push(x)});
-  return `<div class=section-title><h2>Analisi 2026</h2><small>storico</small></div>${Object.keys(months).sort().map(m=>{let t=totals(months[m]);return `<div class=card style="margin-bottom:9px"><span>${monthName(m)}</span><b class=${t.net>=0?'positive':'negative'}>${money(t.net)}</b><small class=sub>Entrate ${money(t.income)} · Uscite reali ${money(t.expense)}</small></div>`}).join('')}`
-}
-function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));document.querySelector('#view').innerHTML=({home,movements,budget,goals,analysis}[view])()}
-window.openFinanceSetup=()=>{
-  let d=document.querySelector('#modal');
-  const home=settings.recurring.find(x=>x.id==='home_shared')||{};
-  const loan=settings.recurring.find(x=>x.id==='loan')||{};
-  d.innerHTML=`<form method=dialog id=financeForm><h2>Impegni e disponibilità</h2>
-  <label>Saldo disponibile oggi<input id=currentBalance type=number step=.01 inputmode=decimal value="${settings.currentBalance??''}" placeholder="Es. 850,00"></label>
-  <label>Versamento mensile conto casa<input id=homeAmount type=number min=0 step=.01 inputmode=decimal value="${home.amount??500}"></label>
-  <label>Giorno previsto conto casa<input id=homeDay type=number min=1 max=31 value="${home.day??1}"></label>
-  <label>Rata finanziamento<input id=loanAmount type=number min=0 step=.01 inputmode=decimal value="${loan.amount??330.36}"></label>
-  <label>Giorno rata<input id=loanDay type=number min=1 max=31 value="${loan.day??20}"></label>
-  <label>Prossimo addebito carta di credito<input id=cardAmount type=number min=0 step=.01 inputmode=decimal value="${settings.creditCardOutstanding??''}" placeholder="Importo dell'estratto conto"></label>
-  <div class=help>Questi importi restano soltanto sul tuo dispositivo.</div>
-  <div class=actions><button class="btn secondary" value=cancel>Annulla</button><button class="btn primary" id=saveFinance value=default>Salva</button></div></form>`;
-  d.showModal();
-  d.querySelector('#financeForm').onsubmit=e=>{
-    if(e.submitter?.value==='cancel')return;
-    settings.currentBalance=d.querySelector('#currentBalance').value===''?null:Number(d.querySelector('#currentBalance').value);
-    settings.balanceUpdatedAt=new Date().toISOString();
-    home.amount=Number(d.querySelector('#homeAmount').value||0);home.day=Number(d.querySelector('#homeDay').value||1);
-    loan.amount=Number(d.querySelector('#loanAmount').value||0);loan.day=Number(d.querySelector('#loanDay').value||20);
-    settings.creditCardOutstanding=d.querySelector('#cardAmount').value===''?null:Number(d.querySelector('#cardAmount').value);
-    save();setTimeout(render,0);
-  }
-};
+function goalCard(title,target,current,sub,cls=''){let pct=target?Math.min(100,current/target*100):0;return `<div class="goalCard ${cls}"><div class=goalHead><div><small>${esc(sub)}</small><h3>${esc(title)}</h3></div><b>${target?money(target):'Crescita'}</b></div>${target?`<div class=bar><i style="width:${pct}%"></i></div><div class=goalMeta><span>${money(current)} accumulati</span><span>Mancano ${money(Math.max(0,target-current))}</span></div>`:`<div class=growthNumber>${money(current)}</div><div class=goalMeta><span>Capitale che vuoi proteggere e far crescere</span></div>`}</div>`}
+function goals(){let cc=cardTotal(),extra=Math.max(0,cc-500),g=settings.goalBalances;return `<div class=section-title><h2>Obiettivi</h2><button class=textBtn onclick="openGoalsSetup()">Aggiorna somme</button></div>
+ <div class=goalCard><div class=goalHead><div><small>PRIORITÀ 1</small><h3>Carta di credito</h3></div><b>Target ${money(500)}</b></div><div class=bar><i style="width:${Math.max(0,Math.min(100,500/Math.max(cc,500)*100))}%"></i></div><div class=goalMeta><span>Uso attuale ${money(cc)}</span><span>Extra da eliminare ${money(extra)}</span></div><p class=goalNote>Prima tappa: usare la carta soltanto per i 500 € della casa.</p></div>
+ ${goalCard('Università',2500,Number(g.university),'PRIORITÀ 2 · ISCRIZIONE APPENA RAGGIUNTO IL TARGET')}
+ ${goalCard('Crescita del conto',0,Number(g.savings),'PRIORITÀ 3 · ANCHE 5 € ALLA VOLTA')}
+ ${goalCard('Estetica',4000,Number(g.aesthetic),'OBIETTIVO PERSONALE')}
+ ${goalCard('Patente nautica',2000,Number(g.boat),'OBIETTIVO PERSONALE')}`}
+function budgetCategory(x){let s=((x.description||'')+' '+(x.details||'')+' '+(x.category||'')).toLowerCase();if(Number(x.amount)>=0||!['expense'].includes(classification(x)))return null;if(/tabacc|tobacco/.test(s))return'Tabacchi';if(/bar |caff|pastic|gelat|ristor|pub|mcdon|burger|deliver|glovo|just eat/.test(s))return'Bar';if(/supermerc|aliment|conad|coop|lidl|eurospin|dok|despar/.test(s))return'Alimentari';if(/farmac|ottic|parruc|barber|salute/.test(s))return'Salute / cura personale';if(/zara|amazon|abbigli|shopping|negozio/.test(s))return'Shopping';return'Extra / svago'}
+function budget(){let m=currentMonth(),spent={};Object.keys(settings.budgetLimits).forEach(k=>spent[k]=0);monthData(m).forEach(x=>{let c=budgetCategory(x);if(c)spent[c]=(spent[c]||0)+Math.abs(Number(x.amount))});let totalBudget=Object.values(settings.budgetLimits).reduce((a,b)=>a+Number(b),0),totalSpent=Object.values(spent).reduce((a,b)=>a+b,0),remain=totalBudget-totalSpent;return `<div class=section-title><h2>Budget</h2><small>${monthName(m)}</small></div><div class=budgetSummary><div><small>BUDGET TOTALE</small><b>${money(totalBudget)}</b></div><div><small>SPESO</small><b>${money(totalSpent)}</b></div><div><small>${remain>=0?'RESTA':'SFORATO'}</small><b class="${remain<0?'negative':'positive'}">${money(Math.abs(remain))}</b></div></div>${Object.entries(settings.budgetLimits).map(([k,limit])=>{let v=spent[k]||0,d=Number(limit)-v,pct=Math.min(100,v/Number(limit)*100);return `<div class="budgetCat ${d<0?'over':''}"><div class=catTop><span>${icon(k)} ${esc(k)}</span><b>${money(v)} / ${money(limit)}</b></div><div class=bar><i style="width:${pct}%"></i></div><div class=catMeta>${d>=0?`Ti restano ${money(d)}`:`Sforamento ${money(-d)}`} · ${Math.round(v/Number(limit)*100)}% utilizzato</div></div>`}).join('')}<div class=notice>I 350 € sono un tetto massimo di spesa, non un obiettivo da consumare. Quello che non spendi resta margine libero per far crescere conto, obiettivi e sicurezza.</div>`}
+function investments(){let t=Number(settings.investmentMonthlyTarget||100);return `<div class=section-title><h2>Investimenti</h2><button class=textBtn onclick="openInvestmentSetup()">Modifica</button></div><div class=budgetHero><div class=eyebrow>PRIMO TRAGUARDO PAC</div><div class=budgetHeadline>${money(t)}<small>/mese</small></div><div class=sub>È un obiettivo progressivo: prima stabilizziamo il bilancio, poi aumentiamo la quota.</div></div><div class=goalCard><div class=goalHead><div><small>CAPITALE INVESTITO REGISTRATO</small><h3>Piano di accumulo</h3></div><b>${money(settings.investedBalance)}</b></div><p class=goalNote>Non consideriamo il PAC denaro da spendere: quando una quota viene destinata agli investimenti esce dalla disponibilità corrente.</p></div>`}
+function risk(){let monthly=fixedExpenseTotal(currentMonth()),target=monthly*6,current=Number(settings.riskFundBalance||0),pct=target?Math.min(100,current/target*100):0,months=monthly?current/monthly:0;return `<div class=section-title><h2>Fondo rischi</h2><button class=textBtn onclick="openRiskSetup()">Aggiorna</button></div><div class=budgetHero><div class=eyebrow>OBIETTIVO SICUREZZA</div><div class=budgetHeadline>${money(target)}</div><div class=sub>6 mesi delle spese fisse attuali (${money(monthly)} al mese)</div></div><div class=goalCard><div class=goalHead><div><small>COPERTURA ATTUALE</small><h3>${months.toFixed(1).replace('.',',')} mesi</h3></div><b>${money(current)}</b></div><div class=bar><i style="width:${pct}%"></i></div><div class=goalMeta><span>${Math.round(pct)}% del target</span><span>Mancano ${money(Math.max(0,target-current))}</span></div></div>`}
+function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));document.querySelector('#view').innerHTML=({home,movements,goals,budget,investments,risk}[view]||home)()}
+window.openPlanSetup=()=>{let d=document.querySelector('#modal');d.innerHTML=`<form method=dialog id=p><h2>Piano mensile</h2><label>Stipendio previsto<input id=sal type=number step=.01 value="${settings.fixedIncome[0]?.amount||0}"></label><label>Giorno stipendio<input id=sday type=number min=1 max=31 value="${settings.fixedIncome[0]?.day||14}"></label><label>Altre spese carta già maturate<input id=other type=number step=.01 min=0 value="${settings.creditCard.other||0}"></label><div class=help>I 500 € Casa restano separati nella carta. Le spese fisse si modificano nel codice sulla base del piano concordato.</div><div class=actions><button class="btn secondary" value=cancel>Annulla</button><button class="btn primary" value=default>Salva</button></div></form>`;d.showModal();d.querySelector('#p').onsubmit=e=>{if(e.submitter?.value==='cancel')return;settings.fixedIncome[0].amount=Number(d.querySelector('#sal').value||0);settings.fixedIncome[0].day=Number(d.querySelector('#sday').value||14);settings.creditCard.other=Number(d.querySelector('#other').value||0);save();setTimeout(render,0)}};
+window.openGoalsSetup=()=>{let g=settings.goalBalances,d=document.querySelector('#modal');d.innerHTML=`<form method=dialog id=g><h2>Somme accantonate</h2><label>Università<input id=u type=number min=0 step=.01 value="${g.university}"></label><label>Crescita conto<input id=s type=number min=0 step=.01 value="${g.savings}"></label><label>Estetica<input id=a type=number min=0 step=.01 value="${g.aesthetic}"></label><label>Patente nautica<input id=b type=number min=0 step=.01 value="${g.boat}"></label><div class=actions><button class="btn secondary" value=cancel>Annulla</button><button class="btn primary" value=default>Salva</button></div></form>`;d.showModal();d.querySelector('#g').onsubmit=e=>{if(e.submitter?.value==='cancel')return;g.university=Number(d.querySelector('#u').value||0);g.savings=Number(d.querySelector('#s').value||0);g.aesthetic=Number(d.querySelector('#a').value||0);g.boat=Number(d.querySelector('#b').value||0);save();setTimeout(render,0)}};
+window.openInvestmentSetup=()=>{let v=prompt('Obiettivo mensile PAC (€)',settings.investmentMonthlyTarget);if(v!==null&&!isNaN(Number(v))){settings.investmentMonthlyTarget=Number(v);save();render()}};
+window.openRiskSetup=()=>{let v=prompt('Quanto hai già nel fondo rischi? (€)',settings.riskFundBalance);if(v!==null&&!isNaN(Number(v))){settings.riskFundBalance=Number(v);save();render()}};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.view;render()});
-document.querySelector('#fab').onclick=()=>{
-  let d=document.querySelector('#modal');d.innerHTML=`<form method=dialog id=moveForm><h2>Nuovo movimento</h2><label>Tipo<select id=type><option value="-1">Spesa</option><option value="1">Entrata</option></select></label><label>Importo<input id=amount type=number min=0 step=.01 required inputmode=decimal></label><label>Descrizione<input id=desc required placeholder="Es. Supermercato"></label><label>Categoria<select id=cat>${['Alimentari','Ristoranti e bar','Trasporti','Abbonamenti','Casa','Salute','Svago','Rate e debiti','Altro','Entrate'].map(x=>`<option>${x}</option>`).join('')}</select></label><label>Pagamento<select id=payment><option value="debit">Conto / bancomat / contanti</option><option value="credit_card">Carta di credito</option></select></label><label>Data<input id=date type=date required value="${new Date().toISOString().slice(0,10)}"></label><div class=actions><button class="btn secondary" value=cancel>Annulla</button><button class="btn primary" id=saveMove value=default>Salva</button></div></form>`;
-  d.showModal();d.querySelector('#moveForm').onsubmit=e=>{if(e.submitter?.value==='cancel')return;let amount=Number(d.querySelector('#amount').value)*Number(d.querySelector('#type').value);let paymentMethod=d.querySelector('#type').value==='-1'?d.querySelector('#payment').value:'income';tx.unshift({id:crypto.randomUUID(),date:d.querySelector('#date').value,description:d.querySelector('#desc').value,details:'Inserimento manuale',account:'Manuale',posted:'SI',bankCategory:'',category:d.querySelector('#cat').value,currency:'EUR',amount,paymentMethod});tx.sort((a,b)=>b.date.localeCompare(a.date));save();setTimeout(render,0)}
-};
-document.querySelector('#importBtn').onclick=()=>{
-  let input=document.createElement('input');input.type='file';input.accept='.json,application/json';
-  input.onchange=async()=>{let f=input.files?.[0];if(!f)return;try{let data=JSON.parse(await f.text());let imported=Array.isArray(data)?data:data.transactions;if(!Array.isArray(imported))throw new Error('Formato non valido');if(!confirm(`Importare ${imported.length} movimenti? I dati locali attuali verranno sostituiti.`))return;tx=imported;settings={...settings,...(data.settings||{})};migrateSettings();tx.sort((a,b)=>b.date.localeCompare(a.date));save();render();alert('Importazione completata.');}catch(e){alert('Impossibile importare il backup: '+e.message)}};input.click()
-};
-document.querySelector('#backupBtn').onclick=()=>{
-  let blob=new Blob([JSON.stringify({version:'0.3.2',exportedAt:new Date().toISOString(),transactions:tx,settings},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='SALDO_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href)
-};
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').then(r=>r.update()).catch(()=>{});
-render();
+document.querySelector('#fab').onclick=()=>{let d=document.querySelector('#modal');d.innerHTML=`<form method=dialog id=moveForm><h2>Nuovo movimento</h2><label>Tipo<select id=type><option value="-1">Spesa</option><option value="1">Entrata</option></select></label><label>Importo<input id=amount type=number min=0 step=.01 required></label><label>Descrizione<input id=desc required></label><label>Categoria<select id=cat>${['Alimentari','Bar','Tabacchi','Shopping','Salute / cura personale','Extra / svago','Abbonamenti','Trasporti','Altro','Entrate'].map(x=>`<option>${x}</option>`).join('')}</select></label><label>Pagamento<select id=payment><option value=debit>Conto / bancomat / contanti</option><option value=credit_card>Carta di credito</option></select></label><label>Data<input id=date type=date required value="${new Date().toISOString().slice(0,10)}"></label><div class=actions><button class="btn secondary" value=cancel>Annulla</button><button class="btn primary" value=default>Salva</button></div></form>`;d.showModal();d.querySelector('#moveForm').onsubmit=e=>{if(e.submitter?.value==='cancel')return;let sign=Number(d.querySelector('#type').value),amount=Number(d.querySelector('#amount').value)*sign,payment=sign<0?d.querySelector('#payment').value:'income';tx.unshift({id:crypto.randomUUID(),date:d.querySelector('#date').value,description:d.querySelector('#desc').value,details:'Inserimento manuale',account:'Manuale',posted:'SI',bankCategory:'',category:d.querySelector('#cat').value,currency:'EUR',amount,paymentMethod:payment});if(payment==='credit_card')settings.creditCard.other=Number(settings.creditCard.other||0)+Math.abs(amount);save();setTimeout(render,0)}};
+document.querySelector('#importBtn').onclick=()=>{let input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{let f=input.files?.[0];if(!f)return;try{let data=JSON.parse(await f.text()),imported=Array.isArray(data)?data:data.transactions;if(!Array.isArray(imported))throw Error('Formato non valido');if(!confirm(`Importare ${imported.length} movimenti?`))return;tx=imported;settings={...settings,...(data.settings||{})};migrateSettings();save();render();alert('Importazione completata.')}catch(e){alert('Importazione non riuscita: '+e.message)}};input.click()};
+document.querySelector('#backupBtn').onclick=()=>{let blob=new Blob([JSON.stringify({version:'0.4',exportedAt:new Date().toISOString(),transactions:tx,settings},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='SALDO_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href)};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').then(r=>r.update()).catch(()=>{});render();

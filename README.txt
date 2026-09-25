@@ -1,4 +1,4 @@
-SALDO v0.5.0
+SALDO v0.5.1
 
 PWA personale per gestione budget, obiettivi, accantonamenti e analisi finanziaria locale.
 

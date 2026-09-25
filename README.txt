@@ -1,15 +1,13 @@
-SALDO — Personal Finance PWA
+SALDO v0.5.0
 
-Applicazione web personale per gestione di movimenti, budget, obiettivi, spese ricorrenti, investimenti e fondo di sicurezza.
+PWA personale per gestione budget, obiettivi, accantonamenti e analisi finanziaria locale.
 
-Privacy
-- Il repository contiene soltanto il codice dell'applicazione.
-- Transazioni, importi personali, obiettivi e configurazione finanziaria non sono inclusi nel repository.
-- I dati personali sono conservati localmente nel browser/PWA del dispositivo.
-- Backup e configurazioni esportate in JSON sono file privati e non devono essere caricati nel repository pubblico.
+Novità:
+- Friday locale, senza API e senza costi esterni
+- analisi prudenziale del mese
+- funzione “Posso permettermelo?” con importo, categoria e data
+- spese previste considerate nelle analisi successive
+- proposta di accantonamenti con approvazione dell’utente
+- chiusura automatica del mese precedente
 
-Versione 0.4.3
-- aggiornamento PWA/cache più robusto;
-- numero versione visibile nell'app;
-- configurazione finanziaria separata dal codice pubblico;
-- importazione di una configurazione privata senza modificare i movimenti esistenti.
+Privacy: i dati finanziari e le impostazioni personali restano nel browser/dispositivo. Il repository contiene solo il codice dell’app.

@@ -1,13 +1,9 @@
-SALDO v0.5.1
-
-PWA personale per gestione budget, obiettivi, accantonamenti e analisi finanziaria locale.
+SALDO v0.5.2
+Aggiornamento funzionale e privacy-safe. I dati finanziari personali restano nel dispositivo e non sono inclusi nei file pubblici.
 
 Novità:
-- Friday locale, senza API e senza costi esterni
-- analisi prudenziale del mese
-- funzione “Posso permettermelo?” con importo, categoria e data
-- spese previste considerate nelle analisi successive
-- proposta di accantonamenti con approvazione dell’utente
-- chiusura automatica del mese precedente
-
-Privacy: i dati finanziari e le impostazioni personali restano nel browser/dispositivo. Il repository contiene solo il codice dell’app.
+- proiezione alla prossima entrata aggiornata anche con le nuove spese registrate;
+- gestione completa delle spese fisse: aggiungi, modifica, elimina;
+- budget alimentati anche dalle spese registrate con carta;
+- obiettivo carta con soglia Casa verde ed extra carta rosso;
+- chiarita la separazione tra budget di spesa e accantonamenti/obiettivi.

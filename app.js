@@ -1,4 +1,4 @@
-const KEY='saldo_v01_transactions', SETTINGS='saldo_v01_settings', APP_VERSION='0.6.6';
+const KEY='saldo_v01_transactions', SETTINGS='saldo_v01_settings', APP_VERSION='0.6.7';
 const $=s=>document.querySelector(s), money=n=>new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(Number(n||0)), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const monthNow=()=>new Date().toISOString().slice(0,7), monthName=m=>new Date(m+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'}), uid=()=>crypto.randomUUID?.()||Date.now()+'-'+Math.random();
 let tx=JSON.parse(localStorage.getItem(KEY)||'[]'), old=JSON.parse(localStorage.getItem(SETTINGS)||'{}'), settings={...old};
@@ -31,7 +31,7 @@ function variableTotal(m){return variableTx(m).reduce((s,x)=>s+Math.abs(Number(x
 function result(m){return incomeTotal(m)-fixedTotal(m)-variableTotal(m)}
 function availableMonths(){let set=new Set([monthNow()]);tx.forEach(x=>{if(/^\d{4}-\d{2}/.test(x.date||''))set.add(x.date.slice(0,7))});settings.fixedIncome.forEach(x=>x.startMonth&&set.add(x.startMonth));return [...set].sort()}
 function allocFor(dest,m=null){return settings.allocations.filter(a=>a.destination===dest&&(!m||String(a.date||'').startsWith(m))).reduce((s,a)=>s+Number(a.amount||0),0)}
-function monthlyPlanFlow(m){let rows=tx.filter(x=>String(x.date||'').startsWith(m)&&capitalEligible(x)),incoming=rows.filter(x=>Number(x.amount)>0).reduce((s,x)=>s+Number(x.amount||0),0),movementsOut=rows.filter(x=>Number(x.amount)<0).reduce((s,x)=>s+Math.abs(Number(x.amount||0)),0),fixed=fixedTotal(m);return {incoming,variable:movementsOut,movementsOut,fixed,net:incoming-fixed-movementsOut}}
+function monthlyPlanFlow(m){let rows=tx.filter(x=>String(x.date||'').startsWith(m)),incoming=rows.filter(x=>Number(x.amount)>0).reduce((s,x)=>s+Number(x.amount||0),0),movementsOut=rows.filter(x=>Number(x.amount)<0).reduce((s,x)=>s+Math.abs(Number(x.amount||0)),0),fixed=fixedTotal(m);return {incoming,variable:movementsOut,movementsOut,fixed,net:incoming-fixed-movementsOut}}
 function assignedFromMonth(m){return settings.allocations.filter(a=>a.sourceMonth===m).reduce((s,a)=>s+Number(a.amount||0),0)}
 function goalValue(g){return Number(g.current||0)+settings.allocations.filter(a=>a.destination===`goal:${g.id}`).reduce((s,a)=>s+Number(a.amount||0),0)}
 function fundValue(f){return Number(f.base||0)+settings.allocations.filter(a=>a.destination===`fund:${f.id}`||a.destination===f.id).reduce((s,a)=>s+Number(a.amount||0),0)}
